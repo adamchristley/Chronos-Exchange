@@ -8,7 +8,7 @@ This is an educational systems project, not a production exchange.
 
 - **Price-time-priority matching engine** with partial fills and cancellation
 - **Pre-trade risk checks** for quantity and price bounds
-- **Custom fixed-width binary TCP order protocol** with explicit network byte order
+- **Nonblocking epoll TCP gateway** with partial-frame buffering, concurrent clients, and explicit network byte order
 - **UDP market-data feed** for accepts, rejects, cancels, and trades
 - **Three-stage multithreaded pipeline**: TCP gateway → matching engine → UDP publisher
 - **Bounded lock-free SPSC ring buffers** between critical pipeline stages
@@ -25,7 +25,7 @@ This is an educational systems project, not a production exchange.
 Trading clients  ------------------------>
                                       +------------------+
                                       |  Order Gateway   |
-                                      |  poll() + decode |
+                                      | epoll + framing  |
                                       +--------+---------+
                                                |
                                     lock-free SPSC queue
@@ -46,7 +46,7 @@ Trading clients  ------------------------>
                                              Market-data clients
 ```
 
-The matching thread is the single writer for order-book state. This keeps matching deterministic and avoids locks on the book itself. Network ingestion and market-data publication run independently and communicate through bounded SPSC queues.
+The matching thread is the single writer for order-book state. This keeps matching deterministic and avoids locks on the book itself. The TCP gateway uses nonblocking sockets plus epoll and maintains a per-connection receive buffer, so split TCP frames and multiple messages per connection are handled without blocking the networking thread. Network ingestion and market-data publication run independently and communicate through bounded SPSC queues.
 
 ## Build
 
