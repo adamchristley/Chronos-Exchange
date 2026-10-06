@@ -2,11 +2,12 @@
 
 #include "chronos/types.hpp"
 
-#include <deque>
 #include <functional>
+#include <list>
 #include <map>
 #include <optional>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 namespace chronos {
@@ -33,13 +34,38 @@ public:
     [[nodiscard]] std::optional<std::int64_t> best_bid() const;
     [[nodiscard]] std::optional<std::int64_t> best_ask() const;
     [[nodiscard]] std::size_t resting_orders() const noexcept;
-    [[nodiscard]] std::uint64_t trade_sequence() const noexcept { return trade_sequence_; }
+    [[nodiscard]] std::uint64_t trade_sequence() const noexcept {
+        return trade_sequence_;
+    }
 
 private:
-    using BidLevels = std::map<std::int64_t, std::deque<Order>, std::greater<std::int64_t>>;
-    using AskLevels = std::map<std::int64_t, std::deque<Order>, std::less<std::int64_t>>;
+    // std::list gives each resting order a stable iterator. The order-id index
+    // stores both that iterator and the owning price-level iterator, so a
+    // cancellation can remove an order without scanning the FIFO queue.
+    using LevelQueue = std::list<Order>;
+    using BidLevels =
+        std::map<std::int64_t, LevelQueue, std::greater<std::int64_t>>;
+    using AskLevels =
+        std::map<std::int64_t, LevelQueue, std::less<std::int64_t>>;
+    using BidLevelIterator = BidLevels::iterator;
+    using AskLevelIterator = AskLevels::iterator;
 
-    struct Locator { Side side; std::int64_t price_ticks; };
+    // libstdc++ may give bid/ask map iterators the same concrete type even
+    // though the maps use different comparators. Distinct wrappers keep the
+    // variant alternatives unambiguous while retaining iterator-based erase.
+    struct BidLevelRef {
+        BidLevelIterator it;
+    };
+
+    struct AskLevelRef {
+        AskLevelIterator it;
+    };
+
+    struct Locator {
+        Side side;
+        LevelQueue::iterator order_it;
+        std::variant<BidLevelRef, AskLevelRef> level_ref;
+    };
 
     RiskLimits limits_;
     BidLevels bids_;

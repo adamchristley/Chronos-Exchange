@@ -6,7 +6,7 @@ This is an educational systems project, not a production exchange.
 
 ## What it implements
 
-- **Price-time-priority matching engine** with partial fills and cancellation
+- **Price-time-priority matching engine** with partial fills and indexed constant-time cancellation
 - **Pre-trade risk checks** for quantity and price bounds
 - **Nonblocking epoll TCP gateway** with partial-frame buffering, concurrent clients, and explicit network byte order
 - **UDP market-data feed** for accepts, rejects, cancels, and trades
@@ -175,7 +175,7 @@ Market-data events are fixed-size UDP datagrams containing sequence number, even
 
 ## Matching semantics
 
-The server maintains an independent order book for each symbol. Within each book, bids are ordered highest-price first and asks lowest-price first. Within a price level, FIFO ordering enforces time priority.
+The server maintains an independent order book for each symbol. Within each book, bids are ordered highest-price first and asks lowest-price first. Within a price level, a linked FIFO queue enforces time priority. The order-ID index stores stable order and price-level iterators, so cancellation removes the indexed node directly instead of linearly scanning every order at that price.
 
 Example:
 
@@ -186,6 +186,16 @@ SELL 12 @  99.00   (order 3)
 ```
 
 Order 3 first trades 10 units against order 2 at 101.00, then 2 units against order 1 at 100.00.
+
+### Order-book operation costs
+
+- New resting order: O(log P), where P is the number of active price levels
+- Best bid/ask lookup: O(1)
+- Match at the best level: O(1) per filled resting order, plus price-level removal
+- Cancel by order ID: average O(1) index lookup and direct node removal
+- Remove an emptied price level: amortized O(1) by stored map iterator
+
+Using stable `std::list` iterators costs more memory than a compact contiguous queue, but removes the previous O(N) cancellation scan within a price level. That tradeoff is intentional for workloads where cancellations are common.
 
 ## Correctness strategy
 
