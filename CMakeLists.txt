@@ -24,6 +24,8 @@ add_executable(chronos_replay src/replay.cpp)
 target_link_libraries(chronos_replay PRIVATE chronos_core)
 add_executable(chronos_bench src/benchmark.cpp)
 target_link_libraries(chronos_bench PRIVATE chronos_core)
+add_executable(chronos_loadgen src/loadgen.cpp)
+target_link_libraries(chronos_loadgen PRIVATE chronos_core Threads::Threads)
 
 include(CTest)
 if(BUILD_TESTING)

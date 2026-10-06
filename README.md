@@ -15,7 +15,7 @@ This is an educational systems project, not a production exchange.
 - **Optional Linux CPU affinity** for gateway, matcher, and publisher threads
 - **Append-only binary event log** containing inputs and emitted events
 - **Deterministic replay tool** that rebuilds book state and verifies trade counts
-- **Microbenchmark harness** reporting throughput plus p50/p95/p99 submit latency
+- **Microbenchmark harness** reporting throughput plus p50/p95/p99 submit latency\n- **Concurrent TCP load generator** measuring client-observed end-to-end p50/p95/p99/p99.9 latency
 - **Automated tests and GitHub Actions CI**
 
 ## Architecture
@@ -126,6 +126,36 @@ resting_orders=...
 
 Benchmark numbers are hardware- and build-dependent. Run Release builds on an otherwise idle machine before quoting results.
 
+### End-to-end network benchmark
+
+The in-process benchmark isolates matching-engine cost. For a system-level measurement, run the exchange and the concurrent load generator in separate terminals:
+
+```bash
+./build/chronos_server --udp-host 127.0.0.1 --udp-port 9100
+```
+
+```bash
+./build/chronos_loadgen --clients 8 --orders 100000
+```
+
+The load generator opens the requested number of TCP connections, synchronizes their start, sends binary order messages through the real epoll gateway, and correlates each order ID with the corresponding Accepted or Rejected UDP market-data event. It reports:
+
+```text
+clients=...
+orders_requested=...
+acks_received=...
+acks_missing_or_dropped=...
+send_rate_orders_per_sec=...
+observed_end_to_end_orders_per_sec=...
+latency_p50_us=...
+latency_p95_us=...
+latency_p99_us=...
+latency_p99_9_us=...
+latency_max_us=...
+```
+
+This measures the application-observed path from client send through TCP framing, gateway handoff, risk checks, matching, the market-data queue, UDP publication, and receipt by the load generator. Because acknowledgements currently travel over UDP, the tool explicitly reports missing/dropped acknowledgements instead of hiding them.
+
 ## Binary protocol
 
 The TCP gateway receives fixed-size 48-byte order messages containing:
@@ -176,7 +206,7 @@ The replay tool provides an additional end-to-end invariant: replaying the same 
 - snapshot + log recovery
 - primary/replica event-stream replication
 - client acknowledgements and sequence-gap detection
-- epoll/io_uring gateway variants
+- io_uring gateway variant
 - lock-free queue vs mutex queue benchmark
 - eBPF/perf-based scheduler and syscall profiling
 - fault-injection harness for disconnects, malformed frames, and process failure
